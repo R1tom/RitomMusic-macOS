@@ -9,6 +9,55 @@ struct PodTrack: Identifiable, Hashable {
     let title, artist, album, kind: String
     let size: Int64
     let seconds: Int
+    var plays = 0, skips = 0
+    var lastPlayed: Date?
+    var lastPlayedValue: Double { lastPlayed?.timeIntervalSince1970 ?? 0 }   // sortable
+}
+
+/// Play history for one song, kept on the Mac. The iPod's "Play Counts" file only counts plays since it last
+/// loaded the database and may start again from zero after a database rewrite, so totals are carried over here.
+struct PlayStat: Codable {
+    var base = 0, seen = 0, skipBase = 0, skipSeen = 0
+    var last: Double = 0
+}
+
+enum PlayCounts {
+    static let mostPlayed = "\u{1}most-played"     // sidebar id, can't clash with a real playlist name
+
+    static var historyURL: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Ritom Music")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("playcounts.json")
+    }
+
+    /// <iPod>/iPod_Control/iTunes/Play Counts: "mhdp" header, then one entry per track in database order:
+    /// plays, last played (Mac epoch, local time), bookmark, rating, ?, skips, last skipped — all UInt32 LE.
+    static func read(_ path: String) -> [(plays: Int, skips: Int, last: Double)] {
+        guard let d = FileManager.default.contents(atPath: path), d.count >= 16,
+              String(data: d.prefix(4), encoding: .ascii) == "mhdp" else { return [] }
+        func u32(_ o: Int) -> Int {
+            guard o + 4 <= d.count else { return 0 }
+            return d[d.startIndex + o ..< d.startIndex + o + 4].enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
+        }
+        let header = u32(4), size = u32(8), count = u32(12)
+        guard size >= 4, header + size * count <= d.count else { return [] }
+        let tz = Double(TimeZone.current.secondsFromGMT())
+        return (0..<count).map { i in
+            let o = header + i * size
+            let mac = u32(o + 4)
+            return (u32(o), size >= 24 ? u32(o + 20) : 0, mac > 0 ? Double(mac) - 2_082_844_800 - tz : 0)
+        }
+    }
+
+    static func load() -> [String: PlayStat] {
+        guard let d = try? Data(contentsOf: historyURL) else { return [:] }
+        return (try? JSONDecoder().decode([String: PlayStat].self, from: d)) ?? [:]
+    }
+
+    static func save(_ h: [String: PlayStat]) {
+        if let d = try? JSONEncoder().encode(h) { try? d.write(to: historyURL, options: .atomic) }
+    }
 }
 
 struct PodPlaylist: Identifiable, Hashable {
@@ -115,10 +164,37 @@ final class IPod: ObservableObject {
                      size: (t["size"] as? NSNumber)?.int64Value ?? 0,
                      seconds: ((t["tracklen"] as? NSNumber)?.intValue ?? 0) / 1000)
         }
+        applyPlayCounts(vol)
         playlists = rawPls.map { p in
             PodPlaylist(name: p["name"] as? String ?? "?", dbids: (p["dbids"] as? [Any] ?? []).map { idString($0) })
         }
         UserDefaults.standard.set(playlists.map(\.name), forKey: "ipodPlaylistNames")
+    }
+
+    /// Merges the iPod's play counts into the history on the Mac and puts the totals on the tracks.
+    private func applyPlayCounts(_ vol: String) {
+        let raw = PlayCounts.read(vol + "/iPod_Control/iTunes/Play Counts")
+        var hist = PlayCounts.load()
+        var changed = false
+        // entries follow the order of the database the iPod last loaded; only trust them while that matches ours
+        let aligned = raw.count == tracks.count
+        for i in tracks.indices {
+            var s = hist[tracks[i].id] ?? PlayStat()
+            if aligned {
+                let e = raw[i]
+                var n = s
+                if e.plays < n.seen { n.base += n.seen }                  // iPod started counting again
+                if e.skips < n.skipSeen { n.skipBase += n.skipSeen }
+                n.seen = e.plays; n.skipSeen = e.skips; n.last = max(n.last, e.last)
+                if n.seen != s.seen || n.base != s.base || n.skipSeen != s.skipSeen || n.skipBase != s.skipBase || n.last != s.last {
+                    s = n; hist[tracks[i].id] = n; changed = true
+                }
+            }
+            tracks[i].plays = s.base + s.seen
+            tracks[i].skips = s.skipBase + s.skipSeen
+            tracks[i].lastPlayed = s.last > 0 ? Date(timeIntervalSince1970: s.last) : nil
+        }
+        if changed { PlayCounts.save(hist) }
     }
 
     // MARK: commands (all go through ipod_sync.py)
@@ -231,15 +307,19 @@ struct IPodView: View {
     @State private var renameText = ""
     @State private var dropHover = false
     @State private var showLog = false
+    @State private var sortOrder: [KeyPathComparator<PodTrack>] = []
     @State private var askNew = false
     @State private var newName = ""
 
     var shown: [PodTrack] {
         var list = pod.tracks
-        if let p = pod.playlists.first(where: { $0.name == playlist }) {
+        if playlist == PlayCounts.mostPlayed {
+            list = pod.tracks.filter { $0.plays > 0 }.sorted { ($0.plays, $0.lastPlayedValue) > ($1.plays, $1.lastPlayedValue) }
+        } else if let p = pod.playlists.first(where: { $0.name == playlist }) {
             let byID = Dictionary(pod.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             list = p.dbids.compactMap { byID[$0] }
         }
+        if !sortOrder.isEmpty { list.sort(using: sortOrder) }
         guard !search.isEmpty else { return list }
         return list.filter { "\($0.artist) \($0.title) \($0.album)".localizedCaseInsensitiveContains(search) }
     }
@@ -322,19 +402,37 @@ struct IPodView: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// One sidebar row. Plain buttons instead of List selection: List rows outside a Section couldn't be clicked.
+    private func sidebarRow(_ title: String, _ icon: String, _ value: String?) -> some View {
+        let on = playlist == value
+        return Button { playlist = value } label: {
+            Label(title, systemImage: icon)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 5).padding(.horizontal, 8)
+                .foregroundStyle(on ? Color.white : Color.primary)
+                .background(on ? Color.accentColor : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     var playlistColumn: some View {
         VStack(spacing: 0) {
-            List(selection: $playlist) {
-                Label("All songs (\(pod.tracks.count))", systemImage: "music.note.list").tag(String?.none)
-                Section("Playlists") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    sidebarRow("All songs (\(pod.tracks.count))", "music.note.list", nil)
+                    sidebarRow("Most Played (\(pod.tracks.filter { $0.plays > 0 }.count))", "chart.bar.fill", PlayCounts.mostPlayed)
+                    Text("Playlists").font(.caption.bold()).foregroundStyle(.secondary)
+                        .padding(.top, 12).padding(.bottom, 2).padding(.leading, 8)
                     ForEach(pod.playlists) { p in
-                        Label("\(p.name) (\(p.dbids.count))", systemImage: "music.note.list").tag(Optional(p.name))
+                        sidebarRow("\(p.name) (\(p.dbids.count))", "music.note.list", p.name)
                             .contextMenu {
                                 Button("Rename…") { renameText = p.name; renaming = p.name }
                                 Button("Delete Playlist…", role: .destructive) { confirmDelete = p.name }
                             }
                     }
-                }
+                }.padding(8)
             }
             Divider()
             HStack {
@@ -393,12 +491,21 @@ struct IPodView: View {
     }
 
     var trackTable: some View {
-        Table(shown, selection: $selection) {
-            TableColumn("Title") { t in Text(t.title).lineLimit(1) }
-            TableColumn("Artist") { t in Text(t.artist).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Album") { t in Text(t.album).lineLimit(1).foregroundStyle(.secondary) }
-            TableColumn("Time") { t in Text(String(format: "%d:%02d", t.seconds / 60, t.seconds % 60)).monospacedDigit() }.width(50)
-            TableColumn("Kind") { t in Text(t.kind).foregroundStyle(.secondary) }.width(min: 50, ideal: 80)
+        Table(shown, selection: $selection, sortOrder: $sortOrder) {
+            TableColumn("Title", value: \.title) { t in Text(t.title).lineLimit(1) }
+            TableColumn("Artist", value: \.artist) { t in Text(t.artist).lineLimit(1).foregroundStyle(.secondary) }
+            TableColumn("Album", value: \.album) { t in Text(t.album).lineLimit(1).foregroundStyle(.secondary) }
+            TableColumn("Time", value: \.seconds) { t in Text(String(format: "%d:%02d", t.seconds / 60, t.seconds % 60)).monospacedDigit() }.width(50)
+            TableColumn("Plays", value: \.plays) { t in
+                Text(t.plays > 0 ? "\(t.plays)" : "–").monospacedDigit().foregroundStyle(t.plays > 0 ? .primary : .tertiary)
+            }.width(50)
+            TableColumn("Skips", value: \.skips) { t in
+                Text(t.skips > 0 ? "\(t.skips)" : "–").monospacedDigit().foregroundStyle(.secondary)
+            }.width(45)
+            TableColumn("Last Played", value: \.lastPlayedValue) { t in
+                Text(t.lastPlayed.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "").foregroundStyle(.secondary)
+            }.width(min: 90, ideal: 140)
+            TableColumn("Kind", value: \.kind) { t in Text(t.kind).foregroundStyle(.secondary) }.width(min: 50, ideal: 80)
         }
         .contextMenu(forSelectionType: String.self) { ids in
             Menu("Add to Playlist") {
@@ -406,7 +513,7 @@ struct IPodView: View {
                 if !pod.playlists.isEmpty { Divider() }
                 Button("New Playlist…") { selection = ids; newName = ""; askNew = true }
             }
-            if let p = playlist {
+            if let p = playlist, p != PlayCounts.mostPlayed {
                 Button("Remove from “\(p)”") { pod.removeFromPlaylist(p, ids) }
             }
             Divider()
