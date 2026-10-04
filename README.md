@@ -1,7 +1,24 @@
-# Ritom Music
+<p align="center">
+  <img src="docs/images/icon.png" width="128" alt="Ritom Music icon">
+</p>
 
-A native macOS app that turns YouTube links into a **lossless FLAC library** and puts that library on a
-**click-wheel iPod** — without iTunes or the Music app.
+<h1 align="center">Ritom Music</h1>
+
+<p align="center">
+  A native macOS app that turns YouTube links into a <b>lossless FLAC library</b> and puts that library on a
+  <b>click-wheel iPod</b> — without iTunes or the Music app.
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/R1tom/RitomMusic-macOS?label=download" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-black?logo=apple" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Intel%20%2B%20Apple%20Silicon-universal-blue" alt="Universal">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/R1tom/RitomMusic-macOS" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/most-played.png" alt="The iPod screen showing Most Played with play counts">
+</p>
 
 - **Download** — paste YouTube song or playlist links. Each track is matched to Spotify and downloaded as real
   lossless FLAC (Tidal / Qobuz / Deezer / Amazon via SpotiFLAC). If no lossless copy exists it falls back to the
@@ -16,6 +33,14 @@ A native macOS app that turns YouTube links into a **lossless FLAC library** and
 
 Built for the 5th-generation iPod (iPod Video); it writes the iPod's own `iTunesDB`, so songs and playlists show
 up on the device like they were synced by iTunes.
+
+## Screenshots
+
+| Download | Library |
+|---|---|
+| ![Download screen: paste YouTube links](docs/images/download.png) | ![Library screen: lossless FLAC and YouTube audio](docs/images/library.png) |
+| **iPod** | **Setup** |
+| ![iPod screen: songs, playlists, play counts](docs/images/ipod.png) | ![Setup screen: dependency checks](docs/images/setup.png) |
 
 ---
 
