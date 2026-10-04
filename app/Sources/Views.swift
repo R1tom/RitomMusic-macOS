@@ -391,7 +391,8 @@ final class SetupModel: ObservableObject {
                               fix: hasMut ? nil : "Install", fixArgs: hasMut ? nil : pip + ["mutagen"]))
             let out = await MainActor.run { Pref.out }
             let exists = FileManager.default.fileExists(atPath: out)
-            list.append(Check(id: "out", name: "Music folder", ok: exists, detail: out, fix: nil, fixArgs: nil))
+            list.append(Check(id: "out", name: "Music folder", ok: exists,
+                              detail: (out as NSString).abbreviatingWithTildeInPath, fix: nil, fixArgs: nil))
             let final = list
             await MainActor.run { self.checks = final; self.checking = false }
         }

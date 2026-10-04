@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="Ritom Music icon">
+  <img src="docs/brand/symbol.svg" width="128" alt="Ritom Music symbol: an iPod click wheel with a sound wave in the centre button">
 </p>
 
 <h1 align="center">Ritom Music</h1>
@@ -149,6 +149,10 @@ tools/
   ipod_reencode_320.py  one-off: re-encode every song already on the iPod to 320 kbps AAC in place
                         (keeps playlists, play counts and track order; see the docstring)
 ```
+
+### Brand
+
+The symbol, single-colour versions and the social preview image are in [`docs/brand`](docs/brand).
 
 ### Testing without an iPod
 

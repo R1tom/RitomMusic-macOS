@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Ritom Music</title>
+  <defs>
+    <linearGradient id="bg" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#FA5C6B"/>
+      <stop offset="1" stop-color="#8C2ECC"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+  <!-- click wheel -->
+  <circle cx="256" cy="256" r="178" fill="#fff" fill-opacity="0.2"/>
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="6"/>
+  <!-- wheel controls: menu, next, play/pause, previous -->
+  <g fill="#fff">
+    <rect x="236" y="104" width="40" height="9" rx="4.5"/>
+    <path d="M384 243 l14 13 -14 13z M400 243 l14 13 -14 13z"/>
+    <path d="M232 396 l18 12 -18 12z"/>
+    <rect x="256" y="396" width="7" height="24" rx="2"/>
+    <rect x="268" y="396" width="7" height="24" rx="2"/>
+    <path d="M128 243 l-14 13 14 13z M112 243 l-14 13 14 13z"/>
+  </g>
+  <!-- centre button with a waveform -->
+  <circle cx="256" cy="256" r="100" fill="#fff"/>
+  <g fill="url(#bg)">
+    <rect x="199" y="236" width="16" height="40"  rx="8"/>
+    <rect x="224" y="211" width="16" height="90"  rx="8"/>
+    <rect x="248" y="191" width="16" height="130" rx="8"/>
+    <rect x="272" y="216" width="16" height="80"  rx="8"/>
+    <rect x="297" y="231" width="16" height="50"  rx="8"/>
+  </g>
+</svg>

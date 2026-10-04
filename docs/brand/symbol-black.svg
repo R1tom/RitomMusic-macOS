@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Ritom Music</title>
+  <defs>
+    <mask id="cut">
+      <rect width="512" height="512" fill="#fff"/>
+      <g fill="#000">
+        <rect x="199" y="236" width="16" height="40"  rx="8"/>
+        <rect x="224" y="211" width="16" height="90"  rx="8"/>
+        <rect x="248" y="191" width="16" height="130" rx="8"/>
+        <rect x="272" y="216" width="16" height="80"  rx="8"/>
+        <rect x="297" y="231" width="16" height="50"  rx="8"/>
+      </g>
+    </mask>
+  </defs>
+  <g fill="#111111">
+    <!-- click wheel -->
+    <circle cx="256" cy="256" r="226" fill="none" stroke="#111111" stroke-width="20"/>
+    <circle cx="256" cy="256" r="124" fill="none" stroke="#111111" stroke-width="8"/>
+    <!-- wheel controls: menu, next, play/pause, previous -->
+    <rect x="228" y="76" width="56" height="13" rx="6.5"/>
+    <path d="M398 238 l19 18 -19 18z M419 238 l19 18 -19 18z"/>
+    <path d="M226 418 l24 16 -24 16z"/>
+    <rect x="257" y="418" width="9" height="32" rx="2.5"/>
+    <rect x="272" y="418" width="9" height="32" rx="2.5"/>
+    <path d="M114 238 l-19 18 19 18z M93 238 l-19 18 19 18z"/>
+    <!-- centre button, waveform cut out -->
+    <circle cx="256" cy="256" r="100" mask="url(#cut)"/>
+  </g>
+</svg>
