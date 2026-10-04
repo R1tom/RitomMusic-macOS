@@ -141,3 +141,12 @@ IPOD_VOL=/tmp/fakepod "/Applications/Ritom Music.app/Contents/MacOS/RitomMusic" 
 - **Eject says the iPod is busy** — it names the app holding files; close it, or eject from Finder.
 - **iPod shows no songs after unplugging** — restart it (Menu + centre button for ~8 s).
 - **Undo an iPod change** — the previous databases are in `<iPod>/.ipod_sync/backups/`.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Ritom Puzari.
+
+The dependencies installed from Setup (ffmpeg, yt-dlp, SpotiFLAC, mutagen) are separate projects under their
+own licenses and are not bundled with this app. Download only music you have the right to download.
