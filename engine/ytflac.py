@@ -1326,7 +1326,14 @@ def main(argv):
     tracks = []
     for url in args.urls:
         info("Reading YouTube: %s" % url)
-        ents, plname = yt_entries(url, args.yes_playlist, args.limit)
+        try:
+            ents, plname = yt_entries(url, args.yes_playlist, args.limit)
+        except SystemExit:
+            # one unreadable link must not sink a multi-link batch (e.g. a retry run)
+            if len(args.urls) == 1:
+                raise
+            warn("could not read %s — skipping it, will retry next run" % url)
+            continue
         if plname:
             info("Playlist '%s' — %d tracks" % (plname, len(ents)))
         elif len(ents) == 1:
