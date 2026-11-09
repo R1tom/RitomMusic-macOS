@@ -6,7 +6,7 @@ enum Pref {
     static let outDir = "outDir", services = "services", resolver = "resolver",
                trackTimeout = "trackTimeout", noFallback = "noFallback",
                fallbackFlac = "fallbackFlac", fixCoversAfter = "fixCoversAfter",
-               notify = "notify"
+               notify = "notify", autoRetry = "autoRetry"
     static let defaultOut = NSHomeDirectory() + "/Music/FLAC"
     static let allServices = ["qobuz", "deezer", "tidal", "amazon"]
 
@@ -14,7 +14,7 @@ enum Pref {
         UserDefaults.standard.register(defaults: [
             outDir: defaultOut, services: allServices.joined(separator: ","), resolver: "auto",
             trackTimeout: 300, noFallback: false, fallbackFlac: false, fixCoversAfter: false,
-            notify: true,
+            notify: true, autoRetry: true,
         ])
     }
     static var out: String {
@@ -78,6 +78,17 @@ final class Downloader: ObservableObject {
 
     private var current = 0
 
+    // MARK: auto-retry — failed tracks are retried by themselves until they succeed
+    @Published var nextRetry: Date?
+    private var retryTask: Task<Void, Never>?
+    private var retryAttempt = 0
+    private var lastFailedCount = Int.max
+    private var retryPaused = false
+    private var retryActivity: NSObjectProtocol?   // keeps App Nap from freezing the wait
+    private static let retryDelays: [Double] = [30, 60, 120, 300, 600, 900]   // then 15 min forever
+    /// manifest statuses that mean "download failed" (unmatched = purist-mode skip, not a failure)
+    nonisolated private static let failedStatuses: Set<String> = ["error", "no-file", "bad-file", "timeout", "fail"]
+
     init() {
         runner.onLine = { [weak self] l in self?.parse(l) }
         runner.onExit = { [weak self] code, stopped in self?.jobEnded(code, stopped: stopped) }
@@ -93,6 +104,7 @@ final class Downloader: ObservableObject {
         guard !urls.isEmpty else { return 0 }
         let title = urls.count == 1 ? Self.shortTitle(urls[0]) : "\(urls.count) links"
         jobs.append(Job(urls: urls, options: options, title: title))
+        retryPaused = false
         startNextIfIdle()
         return urls.count
     }
@@ -102,6 +114,8 @@ final class Downloader: ObservableObject {
         guard !ids.isEmpty else { return }
         let urls = ids.map { "https://www.youtube.com/watch?v=\($0)" }
         jobs.append(Job(urls: urls, options: JobOptions(), title: "Retry \(ids.count) failed track(s)"))
+        retryPaused = false
+        cancelAutoRetry()
         startNextIfIdle()
     }
 
@@ -118,7 +132,62 @@ final class Downloader: ObservableObject {
 
     func stopAll() {
         for i in jobs.indices where jobs[i].state == .queued { jobs[i].state = .stopped }
+        retryPaused = true
+        cancelAutoRetry()
         runner.stop()
+    }
+
+    private func cancelAutoRetry() {
+        retryTask?.cancel(); retryTask = nil; nextRetry = nil
+        endRetryActivity()
+    }
+
+    private func endRetryActivity() {
+        if let a = retryActivity { ProcessInfo.processInfo.endActivity(a); retryActivity = nil }
+    }
+
+    /// YouTube IDs the manifest records as failed downloads.
+    nonisolated static func failedTrackIDs(_ root: String) -> [String] {
+        guard let d = FileManager.default.contents(atPath: root + "/.ytflac-manifest.json"),
+              let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [] }
+        return obj.compactMap { id, v in
+            guard let st = (v as? [String: Any])?["status"] as? String, failedStatuses.contains(st) else { return nil }
+            return id
+        }.sorted()
+    }
+
+    /// Called on launch and whenever the queue goes idle: if anything failed, queue a retry
+    /// after a back-off (30 s → 15 min). Keeps going until nothing is left failed.
+    func scheduleAutoRetry() {
+        guard UserDefaults.standard.bool(forKey: Pref.autoRetry), !retryPaused, retryTask == nil,
+              !runner.running, !jobs.contains(where: { $0.state == .queued }) else { return }
+        let ids = Self.failedTrackIDs(Pref.out)
+        guard !ids.isEmpty else { retryAttempt = 0; lastFailedCount = Int.max; nextRetry = nil; return }
+        if ids.count < lastFailedCount { retryAttempt = 0 }      // progress → retry soon again
+        lastFailedCount = ids.count
+        let delay = Self.retryDelays[min(retryAttempt, Self.retryDelays.count - 1)]
+        retryAttempt += 1
+        let at = Date().addingTimeInterval(delay)
+        nextRetry = at
+        let when = at.formatted(date: .omitted, time: .shortened)
+        phase = "\(ids.count) failed track(s) — retrying automatically at \(when)"
+        let attempt = retryAttempt
+        if retryActivity == nil {
+            retryActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep], reason: "Retrying failed downloads")
+        }
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.retryTask = nil; self.nextRetry = nil
+            self.endRetryActivity()
+            let now = Self.failedTrackIDs(Pref.out)
+            guard !now.isEmpty, !self.retryPaused else { return }
+            let urls = now.map { "https://www.youtube.com/watch?v=\($0)" }
+            self.jobs.append(Job(urls: urls, options: JobOptions(),
+                                 title: "Retry \(now.count) failed track(s) — auto, try \(attempt)"))
+            self.startNextIfIdle()
+        }
     }
 
     static func extractURLs(_ text: String) -> [String] {
@@ -189,6 +258,7 @@ final class Downloader: ObservableObject {
         currentJob = nil
         Library.shared.rescanSoon()
         startNextIfIdle()
+        if !stopped { scheduleAutoRetry() }
     }
 
     /// Everything this job produced — new files, plus songs it skipped because they were

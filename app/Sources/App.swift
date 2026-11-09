@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Downloader.shared.requestNotifications()
             Library.shared.scan()
             _ = IPod.shared
+            // pick up tracks that failed in an earlier session
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { MainActor.assumeIsolated { Downloader.shared.scheduleAutoRetry() } }
         }
     }
 

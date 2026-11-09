@@ -459,6 +459,7 @@ struct SettingsView: View {
     @AppStorage(Pref.fallbackFlac) private var fallbackFlac = false
     @AppStorage(Pref.fixCoversAfter) private var fixCoversAfter = false
     @AppStorage(Pref.notify) private var notify = true
+    @AppStorage(Pref.autoRetry) private var autoRetry = true
 
     var order: [String] { services.split(separator: ",").map(String.init).filter { Pref.allServices.contains($0) } }
 
@@ -506,6 +507,8 @@ struct SettingsView: View {
             }
             Section("App") {
                 Toggle("Notify me when a download finishes in the background", isOn: $notify)
+                Toggle("Keep retrying failed songs automatically until they download", isOn: $autoRetry)
+                    .onChange(of: autoRetry) { _, on in if on { Downloader.shared.scheduleAutoRetry() } }
             }
         }
         .formStyle(.grouped)
