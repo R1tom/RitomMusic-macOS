@@ -67,7 +67,7 @@ struct DownloadView: View {
     @State private var text = ""
     @State private var opts = JobOptions()
     @AppStorage("sendToIPod") private var sendToIPod = false
-    @AppStorage("sendPlaylist") private var sendPlaylist = "@auto"
+    @State private var sendPlaylist = "@auto"   // not remembered: each download starts on the YouTube playlist name
     @ObservedObject var pod = IPod.shared
     @State private var showLog = false
     @State private var note = ""
@@ -273,7 +273,7 @@ struct DownloadView: View {
         let n = dl.enqueue(text: text, options: o)
         note = n == 0 ? "No YouTube links found in that text." :
             (dl.jobs.filter { $0.state == .queued }.isEmpty ? "" : "Added to the queue — it starts when the current job finishes.")
-        if n > 0 { text = ""; opts.dryRun = false; opts.redo = false; opts.limit = 0 }
+        if n > 0 { text = ""; opts.dryRun = false; opts.redo = false; opts.limit = 0; sendPlaylist = "@auto" }
     }
 
     private func pasteIfYouTube(onlyIfEmpty: Bool) {
